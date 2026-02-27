@@ -171,7 +171,7 @@ def _create_container(
         detach=True,
         stdin_open=True,
         tty=False,
-        network=os.getenv("AGENT_NETWORK", "ai_v2_default"),
+        network_mode=os.getenv("AGENT_NETWORK", "ai_v2_default"),
         mem_limit="4g",
         nano_cpus=int(2 * 1e9),
         environment=env,
