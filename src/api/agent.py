@@ -656,34 +656,68 @@ def _persist_session(session: dict[str, Any], key: str) -> None:
 
 
 def _extract_artifacts(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Extract file artifacts (uploads, screenshots) from turn events."""
+    """Extract file artifacts (uploads, screenshots) from turn events.
+
+    Two-pass: first collect tool_use inputs with content_base64 keyed by
+    tool_use id, then match with tool results to build complete artifacts
+    that include the raw file data.
+    """
+    # Pass 1: index upload tool_use inputs by id
+    uploads_by_id: dict[str, dict[str, Any]] = {}
+    for evt in events:
+        if not isinstance(evt, dict) or evt.get("type") != "assistant":
+            continue
+        message = evt.get("message")
+        if not isinstance(message, dict):
+            continue
+        for block in message.get("content") or []:
+            if not isinstance(block, dict) or block.get("type") != "tool_use":
+                continue
+            inp = block.get("input") or {}
+            if not isinstance(inp, dict):
+                continue
+            if inp.get("content_base64") or inp.get("file_path"):
+                uploads_by_id[block.get("id", "")] = {
+                    "content_base64": inp.get("content_base64", ""),
+                    "filename": inp.get("filename", ""),
+                    "comment": inp.get("comment", ""),
+                }
+
+    # Pass 2: match tool results with upload inputs
     artifacts = []
     for evt in events:
-        if not isinstance(evt, dict):
+        if not isinstance(evt, dict) or evt.get("type") not in ("tool", "user"):
             continue
-        content = evt.get("content") if evt.get("type") == "tool" else None
-        if not content:
-            continue
-        text = ""
-        if isinstance(content, list):
-            for block in content:
-                if isinstance(block, dict) and block.get("type") == "text":
-                    text += block.get("text", "")
-        elif isinstance(content, str):
-            text = content
-        if not text:
-            continue
-        try:
-            data = json.loads(text) if text.strip().startswith("{") else {}
-        except (json.JSONDecodeError, ValueError):
-            data = {}
-        if data.get("permalink") or data.get("url"):
+        for block in evt.get("content") or []:
+            if not isinstance(block, dict):
+                continue
+            tool_use_id = block.get("tool_use_id", "")
+            if tool_use_id not in uploads_by_id:
+                continue
+            # Parse the result text for permalink/metadata
+            raw_content = block.get("content", "")
+            text = ""
+            if isinstance(raw_content, list):
+                for sub in raw_content:
+                    if isinstance(sub, dict) and sub.get("type") == "text":
+                        text += sub.get("text", "")
+            elif isinstance(raw_content, str):
+                text = raw_content
+            try:
+                result = json.loads(text) if text.strip().startswith("{") else {}
+            except (json.JSONDecodeError, ValueError):
+                result = {}
+            upload_input = uploads_by_id[tool_use_id]
             artifacts.append({
                 "type": "file",
-                "filename": data.get("name", data.get("filename", "")),
-                "permalink": data.get("permalink", ""),
-                "url": data.get("url", ""),
-                "id": data.get("id", ""),
+                "filename": (
+                    result.get("name")
+                    or result.get("filename")
+                    or upload_input.get("filename", "")
+                ),
+                "permalink": result.get("permalink", ""),
+                "comment": upload_input.get("comment", ""),
+                "content_base64": upload_input.get("content_base64", ""),
                 "timestamp": evt.get("received_at", ""),
             })
     return artifacts
