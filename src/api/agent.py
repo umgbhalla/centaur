@@ -817,9 +817,16 @@ def _create_container(
         **(extra_labels or {}),
     }
     volumes = {
-        _repos_host_dir(): {"bind": "/home/agent/github", "mode": "rw"},
+        _repos_host_dir(): {"bind": "/home/agent/github", "mode": "ro"},
         "/var/run/docker.sock": {"bind": "/var/run/docker.sock", "mode": "rw"},
     }
+    # When a repo is specified, the entrypoint creates a writable worktree
+    # from the read-only bare repo.  Mount just that repo rw so git worktree
+    # can write back (lock files, refs).  Everything else stays read-only.
+    if repo:
+        repo_host_path = os.path.join(_repos_host_dir(), repo)
+        if os.path.isdir(repo_host_path):
+            volumes[repo_host_path] = {"bind": f"/home/agent/github/{repo}", "mode": "rw"}
     if os.getenv("FIREWALL_HOST", os.getenv("MITM_HOST")):
         vol = os.getenv("FIREWALL_CERTS_VOLUME", os.getenv("MITM_CERTS_VOLUME", "firewall-certs"))
         volumes[vol] = {"bind": "/firewall-certs", "mode": "ro"}
