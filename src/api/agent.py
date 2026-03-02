@@ -27,6 +27,7 @@ from docker.errors import NotFound
 
 from api.harness_events import normalize_harness_event
 from shared.engineer.session import has_active_session as has_active_engineer_session
+from shared.tool_sdk import _sm_read
 
 log = structlog.get_logger()
 
@@ -53,6 +54,11 @@ _CONTEXT_HEADER = (
 )
 _SLACK_MENTION_RE = re.compile(r"<@[^>]+>")
 _PLAIN_MENTION_RE = re.compile(r"(?<!\w)@[A-Za-z0-9._-]+")
+
+
+def _fetch_secret(key: str) -> str:
+    """Fetch a secret from the secret manager. Returns empty string on failure."""
+    return _sm_read(key) or ""
 
 
 # In-memory session registry: slack_thread_key → session dict
@@ -296,7 +302,7 @@ def _post_to_slack(
     event_prefix: str,
     warn_on_error: bool,
 ) -> None:
-    token = os.getenv("SLACK_BOT_TOKEN", "").strip()
+    token = _fetch_secret("SLACK_BOT_TOKEN").strip()
     if not token:
         return
     parts = _slack_thread_parts(thread_key)
@@ -708,18 +714,20 @@ def _extract_artifacts(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
             except (json.JSONDecodeError, ValueError):
                 result = {}
             upload_input = uploads_by_id[tool_use_id]
-            artifacts.append({
-                "type": "file",
-                "filename": (
-                    result.get("name")
-                    or result.get("filename")
-                    or upload_input.get("filename", "")
-                ),
-                "permalink": result.get("permalink", ""),
-                "comment": upload_input.get("comment", ""),
-                "content_base64": upload_input.get("content_base64", ""),
-                "timestamp": evt.get("received_at", ""),
-            })
+            artifacts.append(
+                {
+                    "type": "file",
+                    "filename": (
+                        result.get("name")
+                        or result.get("filename")
+                        or upload_input.get("filename", "")
+                    ),
+                    "permalink": result.get("permalink", ""),
+                    "comment": upload_input.get("comment", ""),
+                    "content_base64": upload_input.get("content_base64", ""),
+                    "timestamp": evt.get("received_at", ""),
+                }
+            )
     return artifacts
 
 
@@ -898,7 +906,7 @@ def _container_env() -> list[str]:
 
     return [
         f"AI_V2_API_URL={os.getenv('AGENT_API_URL', 'http://api:8000')}",
-        f"AI_V2_API_KEY={os.getenv('API_SECRET_KEY', '')}",
+        f"AI_V2_API_KEY={_fetch_secret('API_SECRET_KEY')}",
         # Values are set to the secret key name itself. The firewall scans
         # header values for known key names and replaces them with real secrets.
         "ANTHROPIC_API_KEY=ANTHROPIC_API_KEY",
@@ -916,6 +924,7 @@ def _container_env() -> list[str]:
         "SSL_CERT_FILE=/firewall-certs/ca-cert.pem",
         "GIT_SSL_CAINFO=/firewall-certs/ca-cert.pem",
     ]
+
 
 def _build_command(harness: str, message: str, thread_id: str | None) -> list[str]:
     if harness == "claude-code":
@@ -1056,7 +1065,7 @@ def _download_files_to_container(
     upload_dir = "/home/agent/uploads"
     container.exec_run(["mkdir", "-p", upload_dir])
 
-    slack_token = os.getenv("SLACK_BOT_TOKEN", "")
+    slack_token = _fetch_secret("SLACK_BOT_TOKEN")
     paths: list[str] = []
 
     for f in files:
@@ -1273,7 +1282,9 @@ class AgentClient:
 
             if mirror_to_slack:
                 attributed_message = (
-                    f"<@{user_id}>: {display_message}" if str(user_id or "").strip() else display_message
+                    f"<@{user_id}>: {display_message}"
+                    if str(user_id or "").strip()
+                    else display_message
                 )
                 _post_slack_thread_message(
                     slack_thread_key,
