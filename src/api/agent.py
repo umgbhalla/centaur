@@ -812,9 +812,8 @@ def _extract_artifacts(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
 
 def _persist_turn(key: str, turn: dict[str, Any]) -> None:
-    events_json = json.dumps(turn.get("events", []), default=str)
-    artifacts = _extract_artifacts(turn.get("events", []))
-    artifacts_json = json.dumps(artifacts, default=str)
+    events = turn.get("events", [])
+    artifacts = _extract_artifacts(events)
     _pg_write(
         """
         INSERT INTO agent_turns
@@ -834,14 +833,14 @@ def _persist_turn(key: str, turn: dict[str, Any]) -> None:
             key,
             turn["turn_id"],
             turn["user_message"],
-            events_json,
+            psycopg2.extras.Json(events, dumps=lambda o: json.dumps(o, default=str)),
             turn["result"],
             _ts(turn["started_at"]),
             _ts(turn["finished_at"]) if turn.get("finished_at") else None,
             turn.get("exit_code"),
             turn.get("timed_out", False),
             turn.get("duration_s", 0),
-            artifacts_json,
+            psycopg2.extras.Json(artifacts, dumps=lambda o: json.dumps(o, default=str)),
         ),
     )
 
