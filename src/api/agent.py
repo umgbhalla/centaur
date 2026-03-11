@@ -12,6 +12,7 @@ import json
 import os
 import queue
 import threading
+import time
 from collections.abc import AsyncIterator, Callable
 from typing import Any
 
@@ -175,6 +176,15 @@ def _send_turn_and_stream(session: SandboxSession, message: str):
 
     _ensure_reader(session)
 
+    t0 = time.monotonic()
+    log.info(
+        "turn_start",
+        thread_key=session.thread_key,
+        sandbox=session.sandbox_id[:12],
+        harness=session.harness,
+        turn_id=turn_id,
+    )
+
     try:
         backend.write_stdin(session, {"type": "turn.start", "turn_id": turn_id, "text": message})
     except (BrokenPipeError, OSError) as exc:
@@ -194,14 +204,43 @@ def _send_turn_and_stream(session: SandboxSession, message: str):
         _ensure_reader(session, force=True)
         backend.write_stdin(session, {"type": "turn.start", "turn_id": turn_id, "text": message})
 
+    first_output = False
     while True:
         line = turn_queue.get()
         if line is None:
+            log.info(
+                "turn_done",
+                thread_key=session.thread_key,
+                sandbox=session.sandbox_id[:12],
+                harness=session.harness,
+                turn_id=turn_id,
+                duration_s=round(time.monotonic() - t0, 2),
+                reason="eof",
+            )
             return
+        if not first_output:
+            first_output = True
+            log.info(
+                "turn_first_output",
+                thread_key=session.thread_key,
+                sandbox=session.sandbox_id[:12],
+                harness=session.harness,
+                turn_id=turn_id,
+                elapsed_s=round(time.monotonic() - t0, 2),
+            )
         yield line
         try:
             evt = json.loads(line)
             if evt.get("type") == "turn.done" and evt.get("turn_id") == turn_id:
+                log.info(
+                    "turn_done",
+                    thread_key=session.thread_key,
+                    sandbox=session.sandbox_id[:12],
+                    harness=session.harness,
+                    turn_id=turn_id,
+                    duration_s=round(time.monotonic() - t0, 2),
+                    reason="completed",
+                )
                 return
         except (json.JSONDecodeError, TypeError):
             pass
