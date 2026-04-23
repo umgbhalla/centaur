@@ -238,7 +238,7 @@ function render() {
 }
 
 const BASE_PATH = "/apps/usage";
-const VIEWS = ["tools", "skills", "teams", "users", "workflows", "apps"];
+const VIEWS = ["tools", "skills", "workflows", "apps", "teams", "users"];
 
 function viewPath(view) {
   return `${BASE_PATH}/${view}`;
