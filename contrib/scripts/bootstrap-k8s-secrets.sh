@@ -11,6 +11,9 @@ Usage: scripts/bootstrap-k8s-secrets.sh [--namespace NAMESPACE] [--force]
 Creates the required local-dev Kubernetes infra Secrets consumed by the Helm chart.
 Requires OP_SERVICE_ACCOUNT_TOKEN, OP_VAULT, SLACK_BOT_TOKEN,
 SLACK_SIGNING_SECRET, and SLACKBOT_API_KEY in the shell environment.
+Optional Discord ingress:
+  DISCORD_PUBLIC_KEY  Discord application public key for interaction signature verification
+  DISCORD_BOT_TOKEN   optional bot token for channel-message final delivery fallback
 
 Optional 1Password Connect bootstrap (when ironProxy.manager.secretSource is
 set to onepassword-connect in the Helm values):
@@ -98,6 +101,12 @@ if secret_exists centaur-infra-env; then
   if [[ -n "${OP_CONNECT_TOKEN:-}" ]]; then
     patch_data+=("\"OP_CONNECT_TOKEN\":\"$(printf '%s' "$OP_CONNECT_TOKEN" | base64 | tr -d '\n')\"")
   fi
+  if [[ -n "${DISCORD_PUBLIC_KEY:-}" ]]; then
+    patch_data+=("\"DISCORD_PUBLIC_KEY\":\"$(printf '%s' "$DISCORD_PUBLIC_KEY" | base64 | tr -d '\n')\"")
+  fi
+  if [[ -n "${DISCORD_BOT_TOKEN:-}" ]]; then
+    patch_data+=("\"DISCORD_BOT_TOKEN\":\"$(printf '%s' "$DISCORD_BOT_TOKEN" | base64 | tr -d '\n')\"")
+  fi
   if [[ "${#patch_data[@]}" -gt 0 ]]; then
     patch_json="{\"data\":{$(IFS=,; echo "${patch_data[*]}")}}"
     kubectl -n "$NAMESPACE" patch secret centaur-infra-env --type merge -p "$patch_json" >/dev/null
@@ -127,6 +136,12 @@ else
   fi
   if [[ -n "${OP_CONNECT_TOKEN:-}" ]]; then
     secret_args+=(--from-literal=OP_CONNECT_TOKEN="$OP_CONNECT_TOKEN")
+  fi
+  if [[ -n "${DISCORD_PUBLIC_KEY:-}" ]]; then
+    secret_args+=(--from-literal=DISCORD_PUBLIC_KEY="$DISCORD_PUBLIC_KEY")
+  fi
+  if [[ -n "${DISCORD_BOT_TOKEN:-}" ]]; then
+    secret_args+=(--from-literal=DISCORD_BOT_TOKEN="$DISCORD_BOT_TOKEN")
   fi
   kubectl "${secret_args[@]}" >/dev/null
   echo "Created Secret centaur-infra-env in namespace $NAMESPACE"

@@ -64,6 +64,12 @@ Thumbs.db
 logs/
 *.log
 
+# Local reference checkouts
+.refs/
+
+# Pi agent local cache
+.pi/
+
 # Node
 node_modules/
 .next/

@@ -1,0 +1,267 @@
+# GoalBuddy v2 state.yaml
+
+version: 2
+
+goal:
+  title: "Chat SDK Discord End To End Phase"
+  slug: "chatsdk-discord-e2e-phase"
+  kind: specific
+  tranche: "Prove the phase-1 Chat SDK-shaped Discord path on the local Centaur stack."
+  status: active
+  oracle:
+    signal: "Local runtime receipts prove build, deploy, API workflow execution, and Discord webhook handoff, or record exact local prerequisite blockers."
+    cadence: "after each runtime proof step"
+    final_proof: "Receipts map each E2E hop to pass/blocker with commands."
+  intake:
+    original_request: "End-to-end full phase goal and proceed for Chat SDK/Discord migration."
+    interpreted_outcome: "Centaur's new generic chat workflow and Discord ingress are proven through the local stack rather than only unit tests."
+    input_shape: specific
+    audience: "Centaur maintainers and operators"
+    authority: requested
+    proof_type: runtime
+    completion_proof: "Local cluster status, build/deploy output, in-cluster workflow request, Discord webhook request, and final audit receipt."
+    likely_misfire: "Calling phase-1 unit tests an E2E pass or using a remote production-like cluster for validation."
+    blind_spots_considered:
+      - "The selected kube context can be remote."
+      - "Local Colima/OrbStack Kubernetes may be stopped."
+      - "Discord final delivery needs either real credentials or a local fake Discord API endpoint."
+      - "The repo requires local-first testing before push."
+
+rules:
+  pm_owns_state: true
+  one_active_task: true
+  max_write_workers: 1
+  no_completion_without_judge_or_pm_audit: true
+  planning_is_not_completion: true
+  queued_required_worker_blocks_completion: true
+  continuous_until_full_outcome: true
+  missing_input_or_credentials_do_not_stop_goal: true
+  preserve_and_validate_existing_plan: true
+  goal_pressure_requires_oracle: true
+  no_completion_on_weak_proof: true
+  slice_policy:
+    prefer_vertical_slices: true
+    worker_completes_whole_slice: true
+
+agents:
+  scout: missing
+  worker: missing
+  judge: missing
+
+visual_board:
+  selected: local
+  local:
+    status: pending
+    url: ""
+    command: "npx goalbuddy board docs/goals/chatsdk-discord-e2e-phase"
+
+active_task: T007
+
+tasks:
+  - id: T001
+    type: scout
+    assignee: Scout
+    status: done
+    reasoning_hint: high
+    objective: "Inventory local cluster, context, and secret readiness without touching deploy-box paths."
+    receipt:
+      result: done
+      summary: "Current context is do-blr1-msbx-stag-cluster and kubectl cannot authenticate through doctl. Local colima and orbstack contexts exist but both local API ports refused connections. Required bootstrap environment variables were absent in the shell."
+      evidence:
+        - "just status returned doctl authentication failure for the remote context."
+        - "kubectl --context colima and --context orbstack initially refused connections."
+        - "Required OP, Slack, and Discord environment variables were missing from the shell."
+      commands:
+        - cmd: "just status"
+          status: fail
+          output: "Unable to authenticate to do-blr1-msbx-stag-cluster through doctl."
+        - cmd: "kubectl --context colima get nodes"
+          status: fail
+          output: "connect: connection refused"
+        - cmd: "kubectl --context orbstack get nodes"
+          status: fail
+          output: "connect: connection refused"
+        - cmd: "printenv OP_SERVICE_ACCOUNT_TOKEN OP_VAULT SLACK_BOT_TOKEN SLACK_SIGNING_SECRET SLACKBOT_API_KEY DISCORD_PUBLIC_KEY DISCORD_BOT_TOKEN"
+          status: fail
+          output: "All required infra/chat secrets missing from shell."
+  - id: T002
+    type: worker
+    assignee: Worker
+    status: done
+    reasoning_hint: high
+    objective: "Start or select a local Kubernetes context for Centaur E2E without mutating or using the remote DigitalOcean context."
+    allowed_files:
+      - "docs/goals/chatsdk-discord-e2e-phase/state.yaml"
+    verify:
+      - "kubectl --context colima get nodes"
+      - "kubectl --context orbstack get nodes"
+      - "Use explicit --context for any kubectl/helm E2E command."
+    stop_if:
+      - "Local Kubernetes cannot be started safely."
+      - "Starting local Kubernetes requires user-provided credentials or destructive state changes."
+    receipt:
+      result: done
+      summary: "Started Colima with Kubernetes. Local colima context is Ready and Docker is available from the Colima runtime."
+      changed_files:
+        - "docs/goals/chatsdk-discord-e2e-phase/state.yaml"
+      commands:
+        - cmd: "colima start --kubernetes"
+          status: pass
+        - cmd: "kubectl --context colima get nodes -o wide"
+          status: pass
+          output: "colima Ready control-plane,master v1.33.4+k3s1 docker://28.4.0"
+        - cmd: "docker info --format '{{json .ServerVersion}} {{json .OperatingSystem}}'"
+          status: pass
+          output: "28.4.0 Ubuntu 24.04.2 LTS"
+  - id: T003
+    type: worker
+    assignee: Worker
+    status: done
+    reasoning_hint: high
+    objective: "Build affected service images and deploy Centaur to the selected local context."
+    allowed_files:
+      - "docs/goals/chatsdk-discord-e2e-phase/state.yaml"
+      - "services/api/api/api_keys.py"
+      - "services/api/tests/test_chat_sdk.py"
+    verify:
+      - "just build-one api"
+      - "just build-one slackbot"
+      - "helm upgrade --install centaur contrib/chart -n centaur --create-namespace -f contrib/chart/values.dev.yaml --kube-context <local>"
+    receipt:
+      result: done
+      summary: "Built all required local images inside Colima, bootstrapped local placeholder secrets plus an ephemeral Discord public key, deployed Helm to Colima with local image pull policies, and rolled out API plus Slackbot."
+      changed_files:
+        - "docs/goals/chatsdk-discord-e2e-phase/state.yaml"
+        - "services/api/api/api_keys.py"
+        - "services/api/tests/test_chat_sdk.py"
+      commands:
+        - cmd: "colima ssh -- DOCKER_BUILDKIT=1 docker build -t centaur-api:latest -f services/api/Dockerfile ."
+          status: pass
+        - cmd: "colima ssh -- DOCKER_BUILDKIT=0 docker build -t centaur-slackbot:latest -f services/slackbot/Dockerfile ."
+          status: pass
+        - cmd: "colima ssh -- DOCKER_BUILDKIT=1 docker build -t centaur-iron-proxy:latest -f services/iron-proxy/Dockerfile ."
+          status: pass
+        - cmd: "colima ssh -- DOCKER_BUILDKIT=1 docker build --target sandbox -t centaur-agent:latest -f services/sandbox/Dockerfile ."
+          status: pass
+        - cmd: "contrib/scripts/bootstrap-k8s-secrets.sh --namespace centaur --force"
+          status: pass
+          output: "Created centaur-infra-env, centaur-firewall-ca, and centaur-firewall-ca-key in local namespace centaur using local-only placeholder values."
+        - cmd: "helm upgrade --install centaur contrib/chart --kube-context colima -n centaur --create-namespace -f contrib/chart/values.dev.yaml --set api.image.pullPolicy=IfNotPresent --set slackbot.image.pullPolicy=IfNotPresent --set ironProxy.image.pullPolicy=IfNotPresent --set sandbox.image.pullPolicy=IfNotPresent --set ironProxy.manager.pullPolicy=IfNotPresent"
+          status: pass
+        - cmd: "kubectl --context colima -n centaur rollout status deploy/centaur-centaur-api deploy/centaur-centaur-slackbot"
+          status: pass
+  - id: T004
+    type: worker
+    assignee: Worker
+    status: done
+    reasoning_hint: high
+    objective: "Run an in-cluster chat_thread_turn workflow with Discord platform input and dev delivery."
+    allowed_files:
+      - "docs/goals/chatsdk-discord-e2e-phase/state.yaml"
+    verify:
+      - "kubectl --context <local> exec -n centaur deploy/centaur-centaur-api -- curl -s -X POST http://localhost:8000/workflows/runs ..."
+      - "Poll workflow/execution terminal state and verify assistant result."
+    receipt:
+      result: done
+      summary: "The in-cluster API accepted the Discord-shaped chat_thread_turn workflow request, but the run failed before sandbox execution because the API pod could not connect to the Kubernetes API service IP."
+      changed_files:
+        - "docs/goals/chatsdk-discord-e2e-phase/state.yaml"
+      commands:
+        - cmd: "colima ssh -- kubectl exec -n centaur deploy/centaur-centaur-api -- curl -X POST http://localhost:8000/workflows/runs ..."
+          status: pass
+          output: "Created wfr_91da5356c9524ada for thread_key discord:e2e:guild-local:channel-local:1779445116."
+        - cmd: "GET /workflows/runs/wfr_91da5356c9524ada"
+          status: pass
+          output: "status=failed error_text=Cannot connect to host 10.43.0.1:443 ssl:default [Connect call failed ('10.43.0.1', 443)]"
+        - cmd: "kubectl exec deploy/centaur-centaur-api -- python socket connect 10.43.0.1:443"
+          status: pass
+          output: "ConnectionRefusedError(111, 'Connection refused')"
+  - id: T005
+    type: worker
+    assignee: Worker
+    status: done
+    reasoning_hint: high
+    objective: "Run a signed Discord interaction request through the Slackbot Discord route and verify Centaur handoff."
+    allowed_files:
+      - "docs/goals/chatsdk-discord-e2e-phase/state.yaml"
+    verify:
+      - "Generate ephemeral Ed25519 test signing key."
+      - "Configure local Slackbot with DISCORD_PUBLIC_KEY."
+      - "POST signed PING and application command interaction to /api/webhooks/discord."
+      - "Verify PING returns PONG and command returns deferred response with workflow handoff."
+    receipt:
+      result: done
+      summary: "Signed Discord ingress works on the deployed Slackbot pod and creates a Centaur workflow. Full assistant result delivery is blocked by the same local Kubernetes API connectivity failure as T004."
+      changed_files:
+        - "docs/goals/chatsdk-discord-e2e-phase/state.yaml"
+      commands:
+        - cmd: "POST signed Discord PING to http://10.42.0.8:3001/api/webhooks/discord"
+          status: pass
+          output: "HTTP 200 {"type":1}"
+        - cmd: "POST signed Discord application command to http://10.42.0.8:3001/api/webhooks/discord"
+          status: pass
+          output: "HTTP 200 {"type":5}"
+        - cmd: "GET /workflows/runs?workflow_name=chat_thread_turn&limit=10"
+          status: pass
+          output: "Created wfr_ecfa9e4d1db74085 for thread_key discord:guild-local:channel-local:e2e-interaction-1, then failed with Cannot connect to host 10.43.0.1:443."
+        - cmd: "POST signed Discord PING through service ClusterIP 10.43.177.95"
+          status: pass
+          output: "HTTP 000 / timeout; direct pod IP succeeded."
+  - id: T006
+    type: judge
+    assignee: Judge
+    status: done
+    reasoning_hint: high
+    objective: "Final audit against the E2E oracle."
+    expected_output:
+      - "full_outcome_complete"
+      - "passed_hops"
+      - "blocked_hops"
+      - "exact next action if blocked"
+    receipt:
+      result: done
+      decision: "blocked_on_local_cluster_networking"
+      full_outcome_complete: false
+      passed_hops:
+        - "Goal board created for E2E tranche."
+        - "Colima local Kubernetes started."
+        - "All required Centaur images built in Colima."
+        - "Centaur Helm chart deployed locally."
+        - "API accepted Discord-shaped chat_thread_turn workflow requests."
+        - "Deployed Slackbot verified signed Discord PING and application command interactions."
+        - "Discord application command handoff created a chat_thread_turn workflow."
+      blocked_hops:
+        - "Sandbox execution cannot start because the API pod cannot connect to the local Kubernetes API service at 10.43.0.1:443."
+        - "ClusterIP service networking in this Colima stack is suspect: Slackbot service IP timed out while direct pod IP succeeded."
+      exact_next_action: "Repair local Colima/k3s service networking or redeploy with a leaner local values file that disables Laminar, then rerun T004 and T005. Do not use the DigitalOcean context as a substitute."
+  - id: T007
+    type: worker
+    assignee: Worker
+    status: active
+    reasoning_hint: high
+    objective: "Repair or bypass the local Colima/k3s service networking issue and rerun the API workflow plus Discord webhook proof until sandbox execution starts."
+    allowed_files:
+      - "docs/goals/chatsdk-discord-e2e-phase/state.yaml"
+      - "contrib/chart/values.dev.yaml"
+      - "contrib/chart/templates/networkpolicy.yaml"
+      - "contrib/chart/templates/workloads.yaml"
+    verify:
+      - "API pod can connect to Kubernetes API at 10.43.0.1:443 or an equivalent in-cluster API endpoint."
+      - "Slackbot service ClusterIP responds, not only the direct pod IP."
+      - "chat_thread_turn creates an execution_id instead of failing before sandbox creation."
+    stop_if:
+      - "Repair requires destructive local cluster reset without user approval."
+      - "Repair requires real production credentials or the DigitalOcean context."
+    receipt:
+      result: partial
+      summary: "Local runtime bypasses are now in place: API can connect to the Kubernetes apiserver, the Discord emulator can send signed interactions to Slackbot, and chat_thread_turn reaches sandbox execution. The remaining gap is a clean Discord final message because the codex harness produced an empty result after a reconnect warning."
+      evidence:
+        - "Added runtime NetworkPolicy centaur-api-to-kubernetes-apiserver for the Colima apiserver endpoint 192.168.5.1:60767 and verified kubernetes.default.svc:443 connects from the API pod."
+        - "Added runtime NetworkPolicies centaur-slackbot-to-discord-emulator, centaur-discord-emulator-to-slackbot, and centaur-slackbot-from-discord-emulator for local emulator traffic."
+        - "Updated Slackbot runtime env: DISCORD_API_URL=http://centaur-discord-emulator:8000, DISCORD_BOT_TOKEN=test-token, DISCORD_PUBLIC_KEY=03a107bff3ce10be1d70dd18e74bc09967e4d6309ba50d5f1ddc8664125531b8."
+        - "Signed emulator interaction returned Discord deferred response {type:5}."
+        - "Workflow wfr_ae9d39f80ceb413f completed with execution exe_571ebb1acca64b71 for thread_key discord:100000000000000001:300000000000000001:1507352506185809921."
+        - "Execution events show sandbox and proxy pods were created and the execution reached final_delivery.ready."
+      residual_risks:
+        - "Slackbot ClusterIP remains unreliable from inside the Slackbot pod; the emulator proof used the live Slackbot pod IP."
+        - "Codex harness emitted Reconnecting... 2/5 and completed with empty result_text, so no final Discord content was posted back to the emulator message history."

@@ -1,11 +1,13 @@
 import type { WebClient } from "@slack/web-api";
 import { centaurApiKey, type AppConfig } from "../config";
+import { DiscordClient } from "../discord/client";
 import { slackReplyLimits } from "../constants";
 import { logError } from "../logging";
 import { renderMarkdownBlocks } from "../slack/render";
 import { withLaminarSpan } from "./laminar";
 
 const CONSUMER_ID = `slackbot-${process.pid}`;
+const DISCORD_CONSUMER_ID = `discord-${process.pid}`;
 const FINAL_DELIVERY_CHUNK_CHARS = slackReplyLimits.text.maxFallbackChars;
 const FINAL_DELIVERY_CHUNK_EVENT = "centaur_final_delivery_chunk";
 const NON_RETRYABLE_SLACK_ERRORS = new Set([
@@ -20,6 +22,14 @@ const NON_RETRYABLE_SLACK_ERRORS = new Set([
   "not_in_channel",
   "channel_type_not_supported",
 ]);
+const NON_RETRYABLE_DISCORD_ERRORS = new Set([
+  "missing_discord_delivery_target",
+  "unknown_channel",
+  "unknown_webhook",
+  "missing_access",
+  "missing_permissions",
+  "discord_bot_token_not_configured",
+]);
 
 export function startFinalDeliveryPoller(
   config: AppConfig,
@@ -29,12 +39,60 @@ export function startFinalDeliveryPoller(
   const tick = async () => {
     try {
       await pollFinalDeliveriesOnce(config, client);
+      if (config.DISCORD_PUBLIC_KEY || config.DISCORD_BOT_TOKEN) {
+        await pollDiscordFinalDeliveriesOnce(config);
+      }
     } catch (error) {
       logError("final_delivery_poll_failed", error);
     }
   };
   setInterval(tick, 2_000).unref?.();
   void tick();
+}
+
+export async function pollDiscordFinalDeliveriesOnce(
+  config: AppConfig,
+  client = new DiscordClient(config),
+): Promise<void> {
+  const claimed = await centaur(config, "/agent/final-deliveries/claim", {
+    consumer_id: DISCORD_CONSUMER_ID,
+    platform: "discord",
+    limit: 5,
+    lease_seconds: 60,
+  });
+  const deliveries = Array.isArray(claimed.deliveries)
+    ? claimed.deliveries
+    : [];
+  for (const delivery of deliveries) {
+    const executionId = String(delivery.execution_id);
+    try {
+      await deliverDiscord(client, delivery);
+      await centaur(
+        config,
+        `/agent/final-deliveries/${executionId}/delivered`,
+        { consumer_id: DISCORD_CONSUMER_ID },
+        delivery,
+      );
+    } catch (error) {
+      const errorMessage = slackDeliveryErrorMessage(error);
+      const errorClass = discordDeliveryErrorClass(error);
+      await centaur(
+        config,
+        `/agent/final-deliveries/${executionId}/failed`,
+        {
+          consumer_id: DISCORD_CONSUMER_ID,
+          error: errorMessage,
+          retry_after_seconds: 10,
+          ...(errorClass
+            ? { error_class: errorClass, non_retryable: true }
+            : {}),
+        },
+        delivery,
+      ).catch((failError) =>
+        logError("discord_final_delivery_mark_failed_failed", failError),
+      );
+    }
+  }
 }
 
 export async function pollFinalDeliveriesOnce(
@@ -106,6 +164,19 @@ async function deliver(client: WebClient, delivery: any): Promise<void> {
     executionId(delivery),
     splitFinalDeliveryText(textToPost),
   );
+}
+
+async function deliverDiscord(client: DiscordClient, delivery: any): Promise<void> {
+  const meta = delivery.delivery ?? {};
+  const payload = delivery.final_payload ?? {};
+  const target = discordTargetFromDelivery(delivery);
+  const text = extractText(payload);
+  await client.sendMessage({
+    applicationId: meta.application_id ?? target.applicationId,
+    interactionToken: meta.interaction_token,
+    channelId: meta.channel_id ?? meta.channel ?? target.channel,
+    content: text,
+  });
 }
 
 function executionId(delivery: any): string {
@@ -256,6 +327,17 @@ function slackDeliveryErrorClass(error: unknown): string | null {
   return null;
 }
 
+function discordDeliveryErrorClass(error: unknown): string | null {
+  const normalized = slackDeliveryErrorFingerprint(error)
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, "_");
+  for (const errorClass of NON_RETRYABLE_DISCORD_ERRORS) {
+    if (normalized.includes(errorClass)) return errorClass;
+  }
+  return null;
+}
+
 function slackDeliveryErrorFingerprint(error: unknown): string {
   const parts = [slackDeliveryErrorMessage(error)];
   const data = (error as { data?: unknown })?.data;
@@ -280,6 +362,20 @@ function targetFromDelivery(delivery: any): {
       teamId: parts[1],
       channel: parts[2],
       threadTs: parts.slice(3).join(":"),
+    };
+  }
+  return {};
+}
+
+function discordTargetFromDelivery(delivery: any): {
+  applicationId?: string;
+  channel?: string;
+} {
+  const threadKey = String(delivery.thread_key ?? "");
+  const parts = threadKey.split(":");
+  if (parts[0] === "discord" && parts.length >= 4) {
+    return {
+      channel: parts[2],
     };
   }
   return {};

@@ -124,11 +124,17 @@ export OP_VAULT=...
 export SLACK_BOT_TOKEN=...
 export SLACK_SIGNING_SECRET=...
 export SLACKBOT_API_KEY=...
+# Optional, enables Discord interactions and Discord final delivery
+export DISCORD_PUBLIC_KEY=...
+export DISCORD_BOT_TOKEN=...
 ```
 
 Create the Slackbot app at [api.slack.com/apps](https://api.slack.com/apps).
 Use the app's Bot User OAuth Token for `SLACK_BOT_TOKEN` and its Signing Secret
 for `SLACK_SIGNING_SECRET`.
+For Discord, use the application's public key for `DISCORD_PUBLIC_KEY`. A bot
+token is optional for phase 1: interaction follow-up delivery uses the
+interaction token, while `DISCORD_BOT_TOKEN` enables channel-message fallback.
 
 What they are for:
 
@@ -137,6 +143,8 @@ What they are for:
 - `SLACK_BOT_TOKEN`: Slack bot token for the local Slackbot service
 - `SLACK_SIGNING_SECRET`: verifies incoming Slack requests
 - `SLACKBOT_API_KEY`: API key the Slackbot uses to call Centaur
+- `DISCORD_PUBLIC_KEY`: optional Discord interaction signature public key
+- `DISCORD_BOT_TOKEN`: optional Discord bot token for final-delivery fallback
 
 Then create local Kubernetes Secrets from those environment variables and boot the stack:
 

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, mock } from "bun:test";
-import { pollFinalDeliveriesOnce } from "./final-delivery";
+import { pollDiscordFinalDeliveriesOnce, pollFinalDeliveriesOnce } from "./final-delivery";
 import type { AppConfig } from "../config";
 
 const config: AppConfig = {
@@ -8,6 +8,8 @@ const config: AppConfig = {
   CENTAUR_API_URL: "http://centaur-api.test",
   CENTAUR_API_KEY: "centaur-test-key",
   CENTAUR_SLACK_EVENTS_PATH: "/api/webhooks/slack",
+  CENTAUR_DISCORD_EVENTS_PATH: "/api/webhooks/discord",
+  DISCORD_API_URL: "https://discord.test",
   RUNTIME_ERROR_ALERT_CHANNEL: "",
   SLACK_EVENT_DEDUP_TTL_MS: 600000,
   SLACK_SIGNATURE_MAX_AGE_SECONDS: 300,
@@ -23,6 +25,63 @@ afterEach(() => {
 });
 
 describe("final delivery polling", () => {
+  it("posts Discord final deliveries with interaction followup tokens", async () => {
+    const originalFetch = globalThis.fetch;
+    const fetchCalls: Array<{ path: string; body: any }> = [];
+    const fetchMock = mock(
+      async (input: string | URL | Request, init?: RequestInit) => {
+        const url = new URL(input instanceof Request ? input.url : input);
+        const body = init?.body ? JSON.parse(init.body as string) : undefined;
+        fetchCalls.push({ path: url.pathname, body });
+
+        if (url.pathname === "/agent/final-deliveries/claim") {
+          return jsonResponse({
+            deliveries: [
+              {
+                execution_id: "exe-discord",
+                thread_key: "discord:G123:C123:I123",
+                delivery: {
+                  platform: "discord",
+                  application_id: "A123",
+                  interaction_token: "tok",
+                  channel_id: "C123",
+                },
+                final_payload: { result_text: "discord done" },
+              },
+            ],
+          });
+        }
+        if (url.pathname === "/api/v10/webhooks/A123/tok") {
+          return jsonResponse({ id: "msg-1" });
+        }
+        if (url.pathname === "/agent/final-deliveries/exe-discord/delivered") {
+          return jsonResponse({ ok: true });
+        }
+        throw new Error("unexpected request: " + url.pathname);
+      },
+    );
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+
+    try {
+      await pollDiscordFinalDeliveriesOnce({
+        ...config,
+        DISCORD_PUBLIC_KEY: "configured",
+      });
+
+      expect(fetchCalls.map((call) => call.path)).toEqual([
+        "/agent/final-deliveries/claim",
+        "/api/v10/webhooks/A123/tok",
+        "/agent/final-deliveries/exe-discord/delivered",
+      ]);
+      expect(fetchCalls[1]?.body).toEqual({
+        content: "discord done",
+        allowed_mentions: { parse: [] },
+      });
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
   it("posts a claimed delivery once and marks it delivered before the next poll", async () => {
     const originalFetch = globalThis.fetch;
     const fetchCalls: Array<{ path: string; body: unknown }> = [];

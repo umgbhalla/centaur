@@ -42,7 +42,7 @@ _SERVICE_API_KEYS: tuple[ServiceAPIKeySpec, ...] = (
     ServiceAPIKeySpec(
         env_var="SLACKBOT_API_KEY",
         name="service:slackbot",
-        scopes=("agent",),
+        scopes=("agent", "workflows:*"),
     ),
     ServiceAPIKeySpec(
         env_var="LOCAL_DEV_API_KEY",

@@ -7,6 +7,14 @@ import { prettyJSON } from 'hono/pretty-json'
 import { startFinalDeliveryPoller } from './centaur/final-delivery'
 import { CentaurHandoff } from './centaur/handoff'
 import { loadConfig } from './config'
+import { normalizeDiscordInteraction } from './discord/normalize'
+import { verifyDiscordSignature } from './discord/signature'
+import {
+  DISCORD_INTERACTION_PING,
+  DISCORD_RESPONSE_DEFERRED_CHANNEL_MESSAGE_WITH_SOURCE,
+  DISCORD_RESPONSE_PONG,
+  type DiscordInteraction
+} from './discord/types'
 import { logError, logWarn, sanitizeLogValue } from './logging'
 import { AgentSessionRenderer, withAgentSessionLock } from './slack/agent-session'
 import { authorizeSlackOrg } from './slack/authorization'
@@ -46,6 +54,7 @@ void resolver
 
 type Variables = {
   slackRawBody: string
+  discordRawBody: string
 }
 
 type WaitUntilContext = {
@@ -103,6 +112,21 @@ const slackSignatureMiddleware: MiddlewareHandler<{ Variables: Variables }> = as
   await next()
 }
 
+const discordSignatureMiddleware: MiddlewareHandler<{ Variables: Variables }> = async (c, next) => {
+  const rawBody = await c.req.raw.text()
+  const verification = await verifyDiscordSignature({
+    rawBody,
+    publicKey: config.DISCORD_PUBLIC_KEY,
+    signature: c.req.header('x-signature-ed25519'),
+    timestamp: c.req.header('x-signature-timestamp')
+  })
+  if (!verification.ok) {
+    return c.json({ ok: false, error: verification.reason }, verification.status)
+  }
+  c.set('discordRawBody', rawBody)
+  await next()
+}
+
 const slackHandler = async (c: Context<{ Variables: Variables }>) => {
   const envelope = parseSlackBody(c.get('slackRawBody'), c.req.header('content-type'))
   if (!envelope) return c.json({ ok: false, error: 'invalid_slack_payload' }, 400)
@@ -142,6 +166,9 @@ app.post('/api/slack/actions', slackSignatureMiddleware, slackHandler)
 app.post('/api/slack/options', slackSignatureMiddleware, slackHandler)
 app.post('/api/slack/commands', slackSignatureMiddleware, slackCommandHandler)
 app.post('/api/webhooks/slack', slackSignatureMiddleware, slackHandler)
+app.post(config.CENTAUR_DISCORD_EVENTS_PATH, discordSignatureMiddleware, discordHandler)
+app.post('/api/discord/interactions', discordSignatureMiddleware, discordHandler)
+app.post('/api/webhooks/discord', discordSignatureMiddleware, discordHandler)
 
 app.post('/api/slack/messages', apiKeyMiddleware, async c => {
   const body = await c.req.json<{
@@ -531,6 +558,34 @@ async function processSlackEvent(envelope: SlackEnvelope): Promise<void> {
   }
 }
 
+async function discordHandler(c: Context<{ Variables: Variables }>) {
+  const interaction = parseDiscordBody(c.get('discordRawBody'))
+  if (!interaction) return c.json({ ok: false, error: 'invalid_discord_payload' }, 400)
+  if (interaction.type === DISCORD_INTERACTION_PING) {
+    return c.json({ type: DISCORD_RESPONSE_PONG })
+  }
+  const normalized = normalizeDiscordInteraction(interaction)
+  if (!normalized) {
+    return c.json({
+      type: 4,
+      data: { content: 'This Discord interaction is not supported yet.' }
+    })
+  }
+  runInBackground(c, processDiscordInteraction(normalized))
+  return c.json({ type: DISCORD_RESPONSE_DEFERRED_CHANNEL_MESSAGE_WITH_SOURCE })
+}
+
+async function processDiscordInteraction(event: NonNullable<ReturnType<typeof normalizeDiscordInteraction>>): Promise<void> {
+  const result = await handoff.emitDiscord(event)
+  if (!result.ok) {
+    if (result.status === 409) {
+      logWarn('centaur_discord_handoff_conflict', result.body)
+      return
+    }
+    throw new Error('Centaur Discord handoff failed: ' + result.status)
+  }
+}
+
 const TRIVIAL_ACK_REACTION = 'ok_hand'
 
 async function ackWithReaction(client: WebClient, event: NormalizedSlackEvent): Promise<void> {
@@ -703,6 +758,14 @@ function parseSlackBody(rawBody: string, contentType: string | undefined): Slack
       return Object.fromEntries(form) as SlackEnvelope
     }
     return JSON.parse(rawBody) as SlackEnvelope
+  } catch {
+    return null
+  }
+}
+
+function parseDiscordBody(rawBody: string): DiscordInteraction | null {
+  try {
+    return JSON.parse(rawBody) as DiscordInteraction
   } catch {
     return null
   }

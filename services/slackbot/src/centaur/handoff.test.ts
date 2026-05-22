@@ -11,6 +11,8 @@ const config: AppConfig = {
   RUNTIME_ERROR_ALERT_CHANNEL: '',
   SLACK_EVENT_DEDUP_TTL_MS: 600000,
   SLACK_SIGNATURE_MAX_AGE_SECONDS: 300,
+  CENTAUR_DISCORD_EVENTS_PATH: '/api/webhooks/discord',
+  DISCORD_API_URL: 'https://discord.test',
   SLACK_FEEDBACK_COMMANDS: ['/website-feedback'],
   SLACK_FEEDBACK_LINEAR_TEAM_ID: 'team-test',
   SLACK_FEEDBACK_LINEAR_PROJECT_ID: 'project-test',
@@ -167,6 +169,56 @@ describe('CentaurHandoff', () => {
       expect(body.input.delivery).toMatchObject({
         recipient_team_id: 'TEXTERNAL',
         recipient_user_id: 'UEXTERNAL'
+      })
+    } finally {
+      globalThis.fetch = originalFetch
+    }
+  })
+
+  it('emits Discord interactions through the generic chat workflow', async () => {
+    const originalFetch = globalThis.fetch
+    let capturedInit: RequestInit | undefined
+    const fetchMock = mock(async (_input: string | URL | Request, init?: RequestInit) => {
+      capturedInit = init
+      return new Response(JSON.stringify({ ok: true }), { status: 200 })
+    })
+    globalThis.fetch = fetchMock as any
+    try {
+      const handoff = new CentaurHandoff(config)
+
+      await handoff.emitDiscord({
+        thread_key: 'discord:G123:C123:I123',
+        message_id: 'discord:I123',
+        application_id: 'A123',
+        interaction_id: 'I123',
+        interaction_token: 'tok',
+        guild_id: 'G123',
+        channel_id: 'C123',
+        user_id: 'U123',
+        parts: [{ type: 'text', text: '/ask prompt:hello' }],
+        discord: { command_name: 'ask', interaction_type: 2 }
+      })
+
+      const bodyText = capturedInit?.body
+      expect(typeof bodyText).toBe('string')
+      if (typeof bodyText !== 'string') throw new Error('expected JSON request body')
+      const body = JSON.parse(bodyText) as {
+        workflow_name: string
+        trigger_key: string
+        input: {
+          platform: string
+          metadata: { platform: string; source: string }
+          delivery: { platform: string; application_id: string; interaction_token: string }
+        }
+      }
+      expect(body.workflow_name).toBe('chat_thread_turn')
+      expect(body.trigger_key).toBe('discord:I123')
+      expect(body.input.platform).toBe('discord')
+      expect(body.input.metadata).toMatchObject({ platform: 'discord', source: 'discord' })
+      expect(body.input.delivery).toMatchObject({
+        platform: 'discord',
+        application_id: 'A123',
+        interaction_token: 'tok'
       })
     } finally {
       globalThis.fetch = originalFetch

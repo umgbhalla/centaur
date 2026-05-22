@@ -1,0 +1,301 @@
+# GoalBuddy v2 state.yaml
+# Board truth lives here. goal.md is the editable charter; notes/ holds long receipts only.
+
+version: 2
+
+goal:
+  title: "Chat SDK And Discord Phase 1"
+  slug: "chatsdk-discord-phase-1"
+  kind: specific
+  tranche: "Complete a local phase-1 vertical slice for Chat SDK-shaped durable chat contracts and Discord onboarding/configuration alongside Slack."
+  status: done
+  oracle:
+    signal: "Source-backed implementation plus local verification proving Chat SDK reference/onboarding, API contract shape, and Discord platform configuration work without Slack regression."
+    cadence: "after each Worker package and at final audit"
+    final_proof: "Receipts list changed files and commands; final audit maps the diff to Chat SDK phase 1 and Discord onboarding outcomes."
+  intake:
+    original_request: "Explore Centaur and chat-sdk.dev, prepare a GoalBuddy goal, then integrate phase 1 using Chat SDK and Discord onboarding."
+    interpreted_outcome: "Centaur has a concrete phase-1 Chat SDK-shaped chat contract and Discord is represented as a first-class onboarded platform alongside Slack."
+    input_shape: specific
+    audience: "Centaur maintainers and operators"
+    authority: requested
+    proof_type: test
+    completion_proof: "Targeted local tests or checks pass and final receipt identifies the Chat SDK reference, Python/API contract, Discord config, and docs touched."
+    likely_misfire: "Producing only docs or a local reference repo while leaving Slack-specific runtime assumptions unchanged."
+    blind_spots_considered:
+      - "Exact boundary between consuming Chat SDK packages and reimplementing protocol concepts in Python."
+      - "Discord event authentication and interaction semantics are different from Slack."
+      - "Secrets must stay environment or secret-manager backed."
+      - "Local validation must not use the production deploy box."
+    existing_plan_facts:
+      - "Use Chat SDK docs/source as the reference."
+      - "Add a gitignored local reference if useful."
+      - "Discord must be onboarded in the full system, not just added as a tool."
+      - "Python may need Chat SDK concept parity."
+
+rules:
+  pm_owns_state: true
+  one_active_task: true
+  max_write_workers: 1
+  no_implementation_without_worker_or_pm_task: true
+  no_completion_without_judge_or_pm_audit: true
+  planning_is_not_completion: true
+  queued_required_worker_blocks_completion: true
+  continuous_until_full_outcome: true
+  missing_input_or_credentials_do_not_stop_goal: true
+  preserve_and_validate_existing_plan: true
+  intake_misfire_must_be_audited: true
+  goal_pressure_requires_oracle: true
+  no_completion_on_weak_proof: true
+  slice_policy:
+    max_consecutive_tiny_tasks: 2
+    prefer_vertical_slices: true
+    judge_picks_largest_safe_slice: true
+    worker_completes_whole_slice: true
+
+agents:
+  scout: missing
+  worker: missing
+  judge: missing
+
+visual_board:
+  selected: local
+  local:
+    status: live
+    url: "http://goalbuddy.localhost:41737/chatsdk-discord-phase-1/"
+    command: "npx goalbuddy board docs/goals/chatsdk-discord-phase-1"
+
+active_task: null
+
+tasks:
+  - id: T001
+    type: scout
+    assignee: Scout
+    status: done
+    reasoning_hint: high
+    objective: "Map Centaur Slack/API/runtime/workflow surfaces and Chat SDK reference requirements for a phase-1 vertical slice."
+    inputs:
+      - "AGENTS.md"
+      - "README.md"
+      - "services/api"
+      - "services/slackbot"
+      - "packages"
+      - "https://chat-sdk.dev/"
+      - "~/github/vercel/chat if available"
+    constraints:
+      - "Read-only."
+      - "Do not edit implementation files."
+      - "Prefer concrete file-path evidence."
+      - "Identify the smallest vertical implementation slice, not a forever migration."
+    expected_output:
+      - "Repo map for Slack ingress, API durable chat path, packages, and config."
+      - "Chat SDK concepts needed for phase 1."
+      - "Discord onboarding/configuration insertion points."
+      - "Recommended Worker task with allowed_files, verify, and stop_if."
+    receipt:
+      result: done
+      summary: "Mapped Centaur Slack ingress, API durable workflow path, platform delivery hooks, Helm/secret wiring, and Chat SDK docs. The API already has platform-filtered final delivery; the missing phase-1 pieces are a Chat SDK-shaped Python contract/generic workflow plus Discord ingress/final-delivery wiring in the existing chat ingress service."
+      evidence:
+        - "services/slackbot/src/index.ts"
+        - "services/slackbot/src/centaur/handoff.ts"
+        - "services/slackbot/src/centaur/final-delivery.ts"
+        - "services/api/api/workflow_engine.py"
+        - "services/api/api/workflows/slack_thread_turn.py"
+        - "services/api/api/runtime_control.py"
+        - "contrib/chart/templates/workloads.yaml"
+        - "contrib/scripts/bootstrap-k8s-secrets.sh"
+        - "https://chat-sdk.dev/llms.txt"
+  - id: T002
+    type: judge
+    assignee: Judge
+    status: done
+    reasoning_hint: high
+    objective: "Convert Scout findings into the largest safe phase-1 Worker package."
+    inputs:
+      - "T001 receipt"
+    constraints:
+      - "Do not implement."
+      - "Avoid overbuilding full Chat SDK parity."
+      - "Keep Slack compatibility explicit."
+    expected_output:
+      - "Decision"
+      - "Exact Worker objective"
+      - "allowed_files"
+      - "verify"
+      - "stop_if"
+      - "Deferred tasks"
+    receipt:
+      result: done
+      decision: "approved"
+      full_outcome_complete: false
+      rationale: "A single vertical slice can add reusable Chat SDK-style event models, route Slack-or-Discord events through a generic workflow boundary, and make Discord locally configurable/deliverable without changing the sandbox runtime or database schema."
+      worker_objective: "Implement Chat SDK phase-1 contract and Discord onboarding: add Python Chat SDK-shaped event/delivery helpers and generic workflow, add Discord interaction normalization/signature/handoff/final-delivery in the ingress service, wire optional Discord secrets/config/docs, and cover with targeted tests."
+      allowed_files:
+        - ".gitignore"
+        - "README.md"
+        - "contrib/scripts/bootstrap-k8s-secrets.sh"
+        - "contrib/chart/templates/workloads.yaml"
+        - "docs/goals/chatsdk-discord-phase-1/state.yaml"
+        - "services/api/api/chat_sdk.py"
+        - "services/api/api/workflows/chat_thread_turn.py"
+        - "services/api/tests/test_chat_sdk.py"
+        - "services/slackbot/src/config.ts"
+        - "services/slackbot/src/index.ts"
+        - "services/slackbot/src/centaur/handoff.ts"
+        - "services/slackbot/src/centaur/handoff.test.ts"
+        - "services/slackbot/src/centaur/final-delivery.ts"
+        - "services/slackbot/src/centaur/final-delivery.test.ts"
+        - "services/slackbot/src/discord/client.ts"
+        - "services/slackbot/src/discord/normalize.ts"
+        - "services/slackbot/src/discord/signature.ts"
+        - "services/slackbot/src/discord/types.ts"
+        - "services/slackbot/src/discord/*.test.ts"
+      verify:
+        - "uv run pytest services/api/tests/test_chat_sdk.py"
+        - "cd services/slackbot && bun test src/discord/*.test.ts src/centaur/handoff.test.ts src/centaur/final-delivery.test.ts"
+        - "node /Users/umang/.codex/plugins/cache/goalbuddy/goalbuddy/0.3.7/skills/goalbuddy/scripts/check-goal-state.mjs docs/goals/chatsdk-discord-phase-1/state.yaml"
+      stop_if:
+        - "Need production Discord credentials or deploy-box access."
+        - "Need to replace the whole Slackbot service with Chat SDK packages for phase 1."
+        - "Need database schema changes not justified by this vertical slice."
+  - id: T003
+    type: worker
+    assignee: Worker
+    status: done
+    reasoning_hint: high
+    objective: "Implement the approved phase-1 vertical slice for Chat SDK-shaped contracts and Discord onboarding/configuration."
+    allowed_files:
+      - ".gitignore"
+      - "README.md"
+      - "contrib/scripts/bootstrap-k8s-secrets.sh"
+      - "contrib/chart/templates/workloads.yaml"
+      - "docs/goals/chatsdk-discord-phase-1/state.yaml"
+      - "services/api/api/chat_sdk.py"
+      - "services/api/api/workflows/chat_thread_turn.py"
+      - "services/api/tests/test_chat_sdk.py"
+      - "services/slackbot/src/config.ts"
+      - "services/slackbot/src/index.ts"
+      - "services/slackbot/src/centaur/handoff.ts"
+      - "services/slackbot/src/centaur/handoff.test.ts"
+      - "services/slackbot/src/centaur/final-delivery.ts"
+      - "services/slackbot/src/centaur/final-delivery.test.ts"
+      - "services/slackbot/src/discord/client.ts"
+      - "services/slackbot/src/discord/normalize.ts"
+      - "services/slackbot/src/discord/signature.ts"
+      - "services/slackbot/src/discord/types.ts"
+      - "services/slackbot/src/discord/*.test.ts"
+    verify:
+      - "uv run pytest services/api/tests/test_chat_sdk.py"
+      - "cd services/slackbot && bun test src/discord/*.test.ts src/centaur/handoff.test.ts src/centaur/final-delivery.test.ts"
+    stop_if:
+      - "Need files outside allowed_files."
+      - "Discord auth or event semantics require credentials or production access."
+      - "Verification fails twice with the same unexplained failure."
+      - "The slice would require a full UI rewrite instead of phase-1 contract/configuration work."
+    receipt:
+      result: done
+      changed_files:
+        - ".gitignore"
+        - "README.md"
+        - "contrib/scripts/bootstrap-k8s-secrets.sh"
+        - "contrib/chart/templates/workloads.yaml"
+        - "services/api/api/chat_sdk.py"
+        - "services/api/api/workflows/chat_thread_turn.py"
+        - "services/api/tests/test_chat_sdk.py"
+        - "services/slackbot/src/config.ts"
+        - "services/slackbot/src/index.ts"
+        - "services/slackbot/src/centaur/handoff.ts"
+        - "services/slackbot/src/centaur/handoff.test.ts"
+        - "services/slackbot/src/centaur/final-delivery.ts"
+        - "services/slackbot/src/centaur/final-delivery.test.ts"
+        - "services/slackbot/src/discord/client.ts"
+        - "services/slackbot/src/discord/normalize.ts"
+        - "services/slackbot/src/discord/normalize.test.ts"
+        - "services/slackbot/src/discord/signature.ts"
+        - "services/slackbot/src/discord/signature.test.ts"
+        - "services/slackbot/src/discord/types.ts"
+      commands:
+        - cmd: "uv run pytest services/api/tests/test_chat_sdk.py"
+          status: pass
+        - cmd: "cd services/api && uv run python - <<'PY' ..."
+          status: pass
+        - cmd: "cd services/api && uv run ruff check api/chat_sdk.py api/workflows/chat_thread_turn.py tests/test_chat_sdk.py"
+          status: pass
+        - cmd: "cd services/slackbot && bun run check:types"
+          status: pass
+        - cmd: "cd services/slackbot && bun test src/*.test.ts src/**/*.test.ts"
+          status: pass
+        - cmd: "git diff --check"
+          status: pass
+      summary: "Added a Python Chat SDK-shaped event/delivery contract and generic chat_thread_turn workflow, Discord interaction signature/normalization/handoff/final-delivery support in the existing ingress service, optional Discord secret/Helm/bootstrap wiring, README onboarding notes, and a gitignored .refs/chat-sdk upstream checkout."
+  - id: T004
+    type: worker
+    assignee: Worker
+    status: done
+    reasoning_hint: medium
+    objective: "Add or update operator documentation for Chat SDK phase 1 and Discord onboarding if code changes introduce new setup steps."
+    allowed_files:
+      - "README.md"
+      - "contrib/scripts/bootstrap-k8s-secrets.sh"
+      - "contrib/chart/templates/workloads.yaml"
+    verify:
+      - "git diff --check"
+    stop_if:
+      - "No code changes require documentation updates."
+      - "Need credentials or deployment-box access."
+    receipt:
+      result: done
+      changed_files:
+        - "README.md"
+        - "contrib/scripts/bootstrap-k8s-secrets.sh"
+        - "contrib/chart/templates/workloads.yaml"
+      commands:
+        - cmd: "git diff --check"
+          status: pass
+      summary: "Documented optional Discord setup and wired optional Discord secret keys into local bootstrap and Helm deployment env."
+  - id: T999
+    type: judge
+    assignee: Judge
+    status: done
+    reasoning_hint: high
+    objective: "Audit whether the implemented tranche satisfies the original Chat SDK phase-1 and Discord onboarding outcome."
+    inputs:
+      - "All done task receipts"
+      - "Last verification"
+      - "Current dirty diff"
+    constraints:
+      - "Do not implement."
+      - "Reject completion if Slack compatibility is unaddressed."
+      - "Reject completion if Discord is only documented but has no system configuration or code path."
+      - "Reject completion if Chat SDK phase 1 is only a vendored reference with no Centaur-facing contract."
+    expected_output:
+      - "complete | not_complete"
+      - "full_outcome_complete: true | false"
+      - "missing evidence"
+      - "next task if not complete"
+    receipt:
+      result: done
+      decision: "complete"
+      full_outcome_complete: true
+      summary: "The tranche satisfies the oracle: Chat SDK phase-1 Python contract exists, a generic chat workflow exists, Discord is normalized and handed off into Centaur, final delivery can claim platform=discord and post via interaction token or bot-token channel fallback, Slack handoff/delivery tests still pass, and local targeted verification is green."
+      evidence:
+        - "services/api/api/chat_sdk.py"
+        - "services/api/api/workflows/chat_thread_turn.py"
+        - "services/slackbot/src/discord"
+        - "services/slackbot/src/centaur/handoff.ts"
+        - "services/slackbot/src/centaur/final-delivery.ts"
+        - "README.md"
+        - "contrib/chart/templates/workloads.yaml"
+        - ".refs/chat-sdk"
+
+checks:
+  dirty_fingerprint: unknown
+  last_verification:
+    result: pass
+    task: T999
+    commands:
+      - "uv run pytest services/api/tests/test_chat_sdk.py"
+      - "cd services/api && uv run ruff check api/chat_sdk.py api/workflows/chat_thread_turn.py tests/test_chat_sdk.py"
+      - "cd services/slackbot && bun run check:types"
+      - "cd services/slackbot && bun test src/*.test.ts src/**/*.test.ts"
+      - "git diff --check"

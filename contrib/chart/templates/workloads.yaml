@@ -483,6 +483,18 @@ spec:
                 secretKeyRef:
                   name: {{ include "centaur.secretEnvName" . }}
                   key: {{ printf "%sSLACKBOT_API_KEY" .Values.secretManager.envPrefix }}
+            - name: DISCORD_PUBLIC_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "centaur.secretEnvName" . }}
+                  key: {{ printf "%sDISCORD_PUBLIC_KEY" .Values.secretManager.envPrefix }}
+                  optional: true
+            - name: DISCORD_BOT_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "centaur.secretEnvName" . }}
+                  key: {{ printf "%sDISCORD_BOT_TOKEN" .Values.secretManager.envPrefix }}
+                  optional: true
             - name: LMNR_PROJECT_API_KEY
               valueFrom:
                 secretKeyRef:

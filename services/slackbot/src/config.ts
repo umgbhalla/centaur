@@ -10,6 +10,10 @@ const EnvSchema = z.object({
   CENTAUR_API_URL: z.string().url().default('http://localhost:8000'),
   CENTAUR_API_KEY: z.string().optional(),
   CENTAUR_SLACK_EVENTS_PATH: z.string().default('/api/webhooks/slack'),
+  CENTAUR_DISCORD_EVENTS_PATH: z.string().default('/api/webhooks/discord'),
+  DISCORD_PUBLIC_KEY: z.string().optional(),
+  DISCORD_BOT_TOKEN: z.string().optional(),
+  DISCORD_API_URL: z.string().url().default('https://discord.com'),
   RUNTIME_ERROR_ALERT_CHANNEL: z.string().default(''),
   SLACK_EVENT_DEDUP_TTL_MS: z.coerce
     .number()
